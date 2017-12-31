@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<link rel="stylesheet" href="zebpay.css" />
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+	<meta charset="UTF-8">
+	<title>Zebpay</title>
+</head>
+<body>
+	<canvas id="mycanvas"></canvas>
+
+	<script type="text/javascript" src="smoothie.js"></script>
+	<script>
+		
+		// init
+		var smoothie 	= new SmoothieChart({
+			grid: { 
+				fillStyle:'rgb(0, 0, 0)',
+				strokeStyle:'rgb(30, 30, 30)',
+				lineWidth: 0.5,
+				millisPerLine: 250,
+				verticalSections: 10
+			},
+			labels: {
+				fillStyle:'rgb(255,255, 255)'
+			},
+			responsive: true
+		});
+		smoothie.streamTo(document.getElementById("mycanvas"));
+		
+		// Data
+		var buyRate 	= new TimeSeries();
+		var sellRate 	= new TimeSeries();
+		// Fetch buy, sell rates
+		$.ajaxSetup ({  
+			cache: false
+		});
+		setInterval(function() {
+			$.getJSON('https://www.zebapi.com/api/v1/market/ticker/btc/inr', function(data) {
+				//data is the JSON string
+				buyRate.append(new Date().getTime(), data.buy);
+				sellRate.append(new Date().getTime(), data.sell);
+				
+				// display buy rate
+				$('#buyRate').html(data.buy);
+				
+				// display sell rate
+				$('#sellRate').html(data.sell);
+
+				// display cash in hand
+				$('#inHand').html(Math.round($('#btcInHand').val() * data.sell));
+				
+				// display heighest sale rate
+				if (data.sell > parseFloat($('#hSellRate').text())) {
+					$('#hSellRate').text(data.sell);
+				}
+				
+				// display lowest buy rate
+				if (data.buy < parseFloat($('#lBuyRate').text())) {
+					$('#lBuyRate').text(data.buy);
+				}
+			
+				// set current buy rate as last buy rate if not set
+				if ($('#inpBuyRate').val() == 0) {
+					$('#inpBuyRate').val(data.buy);
+				}
+
+				// set current sell rate as last sell rate if not set
+				if ($('#inpSellRate').val() == 0) {
+					$('#inpSellRate').val(data.sell);
+				}
+				
+				// get high sell rate, last buy,loss and set next sell
+				lastBuyRate 		=	$('#inpBuyRate').val();
+				highSellRate		=	parseFloat($('#hSellRate').text());
+				lowBuyRate 			=	parseFloat($('#lBuyRate').text());
+				affLoss 			=	$('#inpLoss').val();
+				lastSellRate 		=	$('#inpSellRate').val();
+				
+				// TO SELL
+				if (lastBuyRate > highSellRate) {
+					nSellRate 			=	Math.round(lastBuyRate - (lastBuyRate * affLoss / 100));
+				}
+				else{
+					nSellRate 			=	Math.round(highSellRate - (highSellRate * affLoss / 100));
+				}
+
+				// TO BUY
+				if (lastSellRate > lowBuyRate) {
+					nBuyRate 			=	Math.round(lowBuyRate + (lowBuyRate * affLoss / 100));
+				}
+				else{
+					nBuyRate 			=	Math.round(parseFloat(lastSellRate)+(lastSellRate * affLoss / 100));
+				}
+
+				$('#nBuyRate').text(nBuyRate);
+				$('#nSellRate').text(nSellRate);
+				$('#lBuyRate').text(lastBuyRate);
+			});
+		}, 3000);
+
+		// Add Bye,Sell rate to SmoothieChart
+		smoothie.addTimeSeries(
+			buyRate,
+			{
+				strokeStyle:'rgb(0, 255, 0)',
+				fillStyle:'rgba(0, 255, 0, 0.2)',
+				lineWidth:1
+			}
+		);
+		smoothie.addTimeSeries(
+			sellRate,
+			{
+				strokeStyle:'rgb(255, 0, 0)',
+				fillStyle:'rgba(255, 0, 0, 0.3)',
+				lineWidth:1
+			}
+		);
+
+		smoothie.streamTo(document.getElementById("mycanvas"), 3000 /*delay*/);
+	</script>
+	<div class="infoContain">
+		<div>Buy : <span id="buyRate"></span></div>
+		<div>Sell : <span id="sellRate"></span></div>
+		<div>H Sell : <span id="hSellRate">0</span></div>
+		<div>L Buy : <span id="lBuyRate">0</span></div>
+		<div id="nBuyRateCont">Next Buy : <span id="nBuyRate">0</span></div>
+		<div id="nSellRateCont">Next Sell : <span id="nSellRate">0</span></div>
+		<div id="cInrValue">In Hand : <span id="inHand">0</span></div>
+	</div>
+	<div id="inputContain">
+		<div>
+			Action :
+			<select name="toDo" id="toDo">
+				<option value="buy">Buy</option>
+				<option value="sell">Sell</option>
+			</select>
+		</div>
+		<div id="inpBuyRateCont">
+			Last Buy Rate :
+			<input type="text" name="inpBuyRate" id="inpBuyRate" />
+		</div>
+		<div id="inpSellRateCont">
+			Last Sell Rate :
+			<input type="text" name="inpSellRate" id="inpSellRate" />
+		</div>
+		<div>
+			Aff. Loss :
+			<input type="text" name="inpLoss" id="inpLoss" /> %
+		</div>
+		<div>
+			BTC in hand :
+			<input type="text" name="btcInHand" id="btcInHand" />
+		</div>
+	</div>
+	<script>
+		$(function(){
+			
+			// initial
+			$('#toDo').val('sell');
+			
+			// show next sell and buy rate inp
+			$('#inpBuyRateCont').show();
+			$('#nSellRateCont').show();
+			
+			// hide next buy  and sell rate inp
+			$('#inpSellRateCont').hide();
+			$('#nBuyRateCont').hide();
+
+			// on change buy rate
+			$('#inpBuyRate').change(function(){
+				$('#lBuyRate').text($('#inpBuyRate').val());
+			});
+
+			// on change action
+			$('#toDo').change(function(){
+				
+				//if buy
+				if ($('#toDo').val() == 'buy') {
+					// hide next sell and buy rate inp
+					$('#inpBuyRateCont').hide();
+					$('#nSellRateCont').hide();
+					// show next buy  and sell rate inp
+					$('#inpSellRateCont').show();
+					$('#nBuyRateCont').show();
+				}
+
+				//if sell
+				if ($('#toDo').val() == 'sell') {
+					// show next sell and buy rate inp
+					$('#inpBuyRateCont').show();
+					$('#nSellRateCont').show();
+					// hide next buy  and sell rate inp
+					$('#inpSellRateCont').hide();
+					$('#nBuyRateCont').hide();
+				}
+
+			});
+		});
+	</script>
+</body>
+</html>
